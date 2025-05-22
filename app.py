@@ -1,9 +1,11 @@
 import os
 import customtkinter as ctk
+import tkinter as tk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk
 import cv2
 import numpy as np
+import threading
 
 # Set the appearance mode and color theme
 ctk.set_appearance_mode("Dark")
@@ -98,7 +100,65 @@ class CartoonifyApp:
         # Status bar at the bottom
         self.status_frame = ctk.CTkFrame(self.container, fg_color="#16213e", height=25, corner_radius=0)
         self.status_frame.pack(fill=ctk.X, side=ctk.BOTTOM)
-        
+
+    #function for voice gen
+    def voice_gen():
+        print("Clicked the Voice generation button")
+
+    #function for camera_to_cartoon
+    def camera_to_cartoon(self):
+       from camera_to_cartoon import CartoonCameraApp
+       CartoonCameraApp(self)
+
+
+    def update_camera_feed(self):
+        self.cap = cv2.VideoCapture(0)
+        while self.camera_running:
+            ret, frame = self.cap.read()
+            if ret:
+                frame = cv2.resize(frame, (800, 500))
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                img = Image.fromarray(frame)
+                imgtk = ImageTk.PhotoImage(img)
+                self.camera_preview.configure(image=imgtk)
+                self.camera_preview.image = imgtk
+            else:
+                break
+        self.cap.release()
+
+    
+
+    def snap_image(self):
+        if hasattr(self, 'cap') and self.cap.isOpened():
+            ret, frame = self.cap.read()
+            if ret:
+                selected = self.selected_style.get()
+                if selected != "Original" and hasattr(self, 'apply_cartoon_style'):
+                    cartooned = self.apply_cartoon_style(frame, selected)
+                    self.captured_image = cartooned
+                else:
+                    self.captured_image = frame
+                messagebox.showinfo("Image Captured", "Image has been captured and styled.")
+            else:
+                messagebox.showerror("Error", "Failed to capture image.")
+        else:
+            messagebox.showerror("Error", "Camera not available.")
+
+    def save_snapped_image(self):
+        if self.captured_image is not None:
+            file_path = filedialog.asksaveasfilename(defaultextension=".png",
+                                                    filetypes=[("PNG files", "*.png"), ("JPEG files", "*.jpg")])
+            if file_path:
+                cv2.imwrite(file_path, cv2.cvtColor(self.captured_image, cv2.COLOR_RGB2BGR))
+                messagebox.showinfo("Saved", f"Image saved to:\n{file_path}")
+        else:
+            messagebox.showwarning("Warning", "No image to save.")
+
+    #function for video_to_cartoon
+    def video_to_cartoon(self):
+        from video_to_cartoon import VideoToCartoonApp
+        VideoToCartoonApp(self)
+            
     def create_widgets(self):
         # Header content
         self.logo_label = ctk.CTkLabel(
@@ -166,12 +226,31 @@ class CartoonifyApp:
                 width=200
             )
             btn.pack(padx=20, pady=10)
-            
-            # Store the cartoonify button reference
-            if text == "🎨 Cartoonify":
-                self.cartoonify_btn = btn
-                self.cartoonify_btn.configure(state=ctk.DISABLED)
-        
+
+        # Dropdown menu for additional actions
+        self.action_var = ctk.StringVar(value="Select Action")
+
+        self.action_menu = ctk.CTkOptionMenu(
+            self.sidebar_frame,
+            variable=self.action_var,  # Use 'variable=' explicitly for clarity
+            values=["🎤 Voice Gen", "📸 Camera to Cartoon", "🎥 Video to Cartoon"],
+            command=self.action_selected
+        )
+        self.action_menu.pack(padx=20, pady=(20, 10), fill=ctk.X)
+
+        # Button to execute the selected action
+        self.execute_action_btn = ctk.CTkButton(
+            self.sidebar_frame,
+            text="Execute Action",
+            command=self.execute_action,
+            fg_color="#4579e9",
+            hover_color="#35b0c6",
+            font=("Arial Bold", 14),
+            height=40,
+            width=200
+        )
+        self.execute_action_btn.pack(padx=20, pady=(0, 10))
+
         # Add effect strength control
         self.effect_frame = ctk.CTkFrame(self.sidebar_frame, fg_color="#0f3460")
         self.effect_frame.pack(fill=ctk.X, padx=20, pady=(30, 10))
@@ -277,9 +356,46 @@ class CartoonifyApp:
         self.progress_bar = ctk.CTkProgressBar(self.progress_container)
         self.progress_bar.pack(padx=10, pady=(0, 10), fill=ctk.X)
         self.progress_bar.set(0)
+
+        for text, color, command in buttons:
+            btn = ctk.CTkButton(
+                self.sidebar_frame,
+                text=text,
+                fg_color=color,
+                corner_radius=8,
+                command=command,
+                font=("Arial Bold", 14),
+                text_color="white",
+                hover_color="#35b0c6",
+                height=40,
+                width=200
+            )
+            btn.pack(padx=20, pady=10)
+
+            if text == "🎨 Cartoonify":
+                self.cartoonify_btn = btn  # ✅ Save reference for later use
+
         
         # Add Cartoon Style Selection
         self.create_style_selection()
+
+    # Method to handle action selection
+    def action_selected(self, value):
+        print(f"Selected action: {value}")
+
+    # Method to execute the selected action
+    def execute_action(self):
+        selected_action = self.action_var.get()
+        if selected_action == "🎤 Voice Gen":
+            self.voice_gen()
+        elif selected_action == "📸 Camera to Cartoon":
+            self.camera_to_cartoon()
+        elif selected_action == "🎥 Video to Cartoon":
+            self.video_to_cartoon()
+        else:
+            messagebox.showwarning("Warning", "Please select a valid action.")
+
+
         
     def create_style_selection(self):
         # Title for style selection
@@ -549,7 +665,7 @@ class CartoonifyApp:
 
     
     def generate_style_preview(self, img, style_name):
-        try:
+        try: 
             params = self.styles[style_name]
             effect_function = params["effect_function"]
             
