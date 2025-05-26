@@ -429,7 +429,7 @@ class CartoonifyApp:
         # Define styles with their parameters
         self.styles = {
             "Pencil Sketch": {
-                "effect_function": self.pencil_sketch,
+                "effect_function": self.cartoonify_image_mixed,
                 "effect_strength": 75
             },
             "Detail Enhance": {
@@ -455,6 +455,10 @@ class CartoonifyApp:
             "Lomo": {
                 "effect_function": self.lomo,
                 "effect_strength": 70
+            },
+            "Cartoon Style 1":{
+                "effect_function": self.cartoonify_image_mixed,
+                "effect_strength": 74
             }
         }
 
@@ -618,6 +622,55 @@ class CartoonifyApp:
     def pencil_sketch(self, img, sigma_s=60, sigma_r=0.07, shade_factor=0.05):
         gray, color = cv2.pencilSketch(img, sigma_s=sigma_s, sigma_r=sigma_r, shade_factor=shade_factor)
         return gray, color
+    
+    def cartoonify_image_mixed(self, img, sigma_s=75, **kwargs):
+        num_bilateral = 7  # Number of bilateral filtering steps
+        img_color = img.copy()
+
+        for _ in range(num_bilateral):
+            img_color = cv2.bilateralFilter(img_color, d=9, sigmaColor=sigma_s, sigmaSpace=sigma_s)
+
+        # Convert to grayscale and apply median blur
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        img_blur = cv2.medianBlur(img_gray, 7)
+
+        # Edge detection using adaptive threshold
+        edges = cv2.adaptiveThreshold(
+            img_blur, 255,
+            cv2.ADAPTIVE_THRESH_MEAN_C,
+            cv2.THRESH_BINARY,
+            blockSize=9,
+            C=2
+        )
+
+        # Color quantization using k-means clustering for cell shading
+        data = np.float32(img_color).reshape((-1, 3))
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 0.001)
+        k = 8  # number of colors
+        _, labels, centers = cv2.kmeans(data, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+        centers = np.uint8(centers)
+        quantized = centers[labels.flatten()]
+        quantized = quantized.reshape(img_color.shape)
+
+        # Combine quantized colors and edges
+        edges_colored = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+        cartoon_img = cv2.bitwise_and(quantized, edges_colored)
+
+        # Overlay edges as black lines
+        cartoon_img[edges == 0] = 0  # Make edges black
+
+        # Enhance contrast by converting to LAB and increasing L channel
+        lab = cv2.cvtColor(cartoon_img, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+        cl = clahe.apply(l)
+        lab = cv2.merge((cl, a, b))
+        enhanced = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+        return cv2.cvtColor(cartoon_img, cv2.COLOR_BGR2GRAY), enhanced
+
+
+
 
     def detail_enhance(self, img, sigma_s=10, sigma_r=0.15):
         return cv2.detailEnhance(img, sigma_s=sigma_s, sigma_r=sigma_r)
@@ -644,6 +697,52 @@ class CartoonifyApp:
         blurred = cv2.GaussianBlur(inverted, (21, 21), 0)
         inverted_blurred = cv2.bitwise_not(blurred)
         return cv2.divide(gray, inverted_blurred, scale=256.0)
+    
+    def anime_style_effect(self, img):
+
+        num_bilateral = 7  # Number of bilateral filtering steps
+        img_color = img.copy()
+        for _ in range(num_bilateral):
+            img_color = cv2.bilateralFilter(img_color, d=9, sigmaColor=75, sigmaSpace=75)
+            
+        # Convert to grayscale and apply median blur
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        img_blur = cv2.medianBlur(img_gray, 7)
+        
+        # Edge detection using adaptive threshold
+        edges = cv2.adaptiveThreshold(img_blur, 255,
+                                    cv2.ADAPTIVE_THRESH_MEAN_C,
+                                    cv2.THRESH_BINARY,
+                                    blockSize=9,
+                                    C=2)
+        
+        # Color quantization using k-means clustering for cell shading
+        data = np.float32(img_color).reshape((-1, 3))
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 0.001)
+        k = 8  # number of colors
+        _, labels, centers = cv2.kmeans(data, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+        centers = np.uint8(centers)
+        quantized = centers[labels.flatten()]
+        quantized = quantized.reshape(img_color.shape)
+        
+        # Combine quantized colors and edges
+        edges_colored = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+        anime_img = cv2.bitwise_and(quantized, edges_colored)
+        
+        #  Overlay edges as black lines
+        anime_img[edges == 0] = 0  # Make edges black
+        
+        #  enhance contrast by converting to LAB and increasing L channel
+        lab = cv2.cvtColor(anime_img, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+        cl = clahe.apply(l)
+        lab = cv2.merge((cl,a,b))
+        enhanced = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+        
+        return enhanced
+
+
 
     def vignette(self, img, strength=1.0):
         rows, cols = img.shape[:2]

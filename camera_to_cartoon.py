@@ -65,7 +65,8 @@ class CartoonCameraApp(ctk.CTkToplevel):
             "Color Quantization",
             "Sketch Effect",
             "Vignette",
-            "Lomo"
+            "Lomo",
+            "Cartoon Style 1"
         ]
         self.style_menu = ctk.CTkOptionMenu(
             controls,
@@ -239,6 +240,8 @@ class CartoonCameraApp(ctk.CTkToplevel):
             return self.vignette(img)
         elif style_name == "Lomo":
             return self.lomo(img)
+        elif style_name == "Cartoon Style 1":
+            return self.cartoonify_image_mixed(img)
         else:
             return img
 
@@ -265,6 +268,33 @@ class CartoonCameraApp(ctk.CTkToplevel):
         blurred = cv2.GaussianBlur(inverted, (21, 21), 0)
         inverted_blurred = cv2.bitwise_not(blurred)
         return cv2.divide(gray, inverted_blurred, scale=256.0)
+    
+    def cartoonify_image_mixed(self, img):
+        img_color = img.copy()
+        for _ in range(7):
+            img_color = cv2.bilateralFilter(img_color, d=9, sigmaColor=75, sigmaSpace=75)
+            
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        img_blur = cv2.medianBlur(img_gray, 7)
+        edges = cv2.adaptiveThreshold(img_blur, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 9, 2)
+        
+        data = np.float32(img_color).reshape((-1, 3))
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 0.001)
+        _, labels, _ = cv2.kmeans(data, 8, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+        
+        edges_colored = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+        cartoon_img = cv2.bitwise_and(img_color, edges_colored)
+        cartoon_img[edges == 0] = 0
+        
+        lab = cv2.cvtColor(cartoon_img, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+        cl = clahe.apply(l)
+        lab = cv2.merge((cl,a,b))
+        return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+
+
 
     def vignette(self, img, strength=1.0):
         rows, cols = img.shape[:2]
