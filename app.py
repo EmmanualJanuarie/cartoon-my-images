@@ -5,11 +5,13 @@ from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk
 import cv2
 import numpy as np
+import requests
 import threading
 
 # Set the appearance mode and color theme
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("dark-blue")
+
 
 class CartoonifyApp:
     def __init__(self, root):
@@ -429,7 +431,7 @@ class CartoonifyApp:
         # Define styles with their parameters
         self.styles = {
             "Pencil Sketch": {
-                "effect_function": self.cartoonify_image_mixed_2,
+                "effect_function": self.cartoonify_image_mixed_4,
                 "effect_strength": 75
             },
             "Detail Enhance": {
@@ -462,6 +464,10 @@ class CartoonifyApp:
             },
             "Cartoon Style 2":{
                 "effect_function": self.cartoonify_image_mixed_2,
+                "effect_strength": 74
+            },
+            "Cartoon Style 3":{
+                "effect_function": self.cartoonify_image_mixed_3,
                 "effect_strength": 74
             }
         }
@@ -569,6 +575,7 @@ class CartoonifyApp:
                 self.show_progress(0.2)
                 
                 self.current_file_path = file_path
+                self.original_image_path = file_path
                 self.original_image = cv2.imread(file_path)
                 if self.original_image is None:
                     raise Exception("Unable to read the image file.")
@@ -626,8 +633,72 @@ class CartoonifyApp:
     def pencil_sketch(self, img, sigma_s=60, sigma_r=0.07, shade_factor=0.05):
         gray, color = cv2.pencilSketch(img, sigma_s=sigma_s, sigma_r=sigma_r, shade_factor=shade_factor)
         return gray, color
-
     
+    def cartoonify_image_mixed_3(self, img, sigma_s=100, k=7, **kwargs):
+         # Step 1: Gentle bilateral smoothing (preserve structure while reducing noise)
+        img_smooth = img.copy()
+        for _ in range(5):
+            img_smooth = cv2.bilateralFilter(img_smooth, d=9, sigmaColor=sigma_s, sigmaSpace=sigma_s)
+
+        # Step 2: Soft color quantization
+        data = np.float32(img_smooth).reshape((-1, 3))
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 25, 0.01)
+        _, labels, centers = cv2.kmeans(data, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+        centers = np.uint8(centers)
+        quantized = centers[labels.flatten()].reshape(img.shape)
+
+        # Step 3: Stylized shading via light dodge blending
+        gray_blur = cv2.GaussianBlur(cv2.cvtColor(quantized, cv2.COLOR_BGR2GRAY), (21, 21), 0)
+        dodge = cv2.divide(cv2.cvtColor(quantized, cv2.COLOR_BGR2GRAY), gray_blur, scale=256)
+        shading = cv2.cvtColor(dodge, cv2.COLOR_GRAY2BGR)
+        shaded = cv2.addWeighted(quantized, 0.85, shading, 0.15, 0)
+
+        # Step 4: Edge detection (comic style)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        sobel = cv2.Sobel(gray, cv2.CV_8U, 1, 1, ksize=3)
+        _, edge = cv2.threshold(sobel, 60, 255, cv2.THRESH_BINARY_INV)
+        edge = cv2.morphologyEx(edge, cv2.MORPH_CLOSE, np.ones((2, 2), np.uint8))
+
+        # Step 5: Combine edges
+        edge_colored = cv2.cvtColor(edge, cv2.COLOR_GRAY2BGR)
+        mask = edge_colored.astype(np.float32) / 255.0
+        cartoon = shaded.astype(np.float32) * (1 - 0.25 * mask)
+        cartoon = np.uint8(np.clip(cartoon, 0, 255))
+
+        return edge_colored, cartoon
+    
+    def cartoonify_image_mixed_4(self, img, k=4, sigma_s=120, **kwargs):
+        img_smooth = img.copy()
+        for _ in range(5):
+            img_smooth = cv2.bilateralFilter(img_smooth, d=11, sigmaColor=sigma_s, sigmaSpace=sigma_s)
+
+        # KMeans quantization
+        data = np.float32(img_smooth).reshape((-1, 3))
+        _, labels, centers = cv2.kmeans(data, k, None,
+                                        (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.01),
+                                        10, cv2.KMEANS_PP_CENTERS)
+        quantized = centers[labels.flatten()].reshape(img.shape)
+
+        # Brighten colors to offset darkness
+        poster = cv2.convertScaleAbs(quantized, alpha=1.15, beta=20)
+        poster = cv2.medianBlur(poster, 3)
+
+        # Edge on saturation (not brightness) and smooth it
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        sat = cv2.GaussianBlur(hsv[:, :, 1], (3, 3), 0)
+        edges = cv2.Canny(sat, 50, 130)
+        edges = cv2.dilate(edges, np.ones((3, 3), np.uint8))
+
+        # Blend outline
+        edge_colored = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+        edge_alpha = edge_colored.astype(np.float32) / 255.0
+        cartoon = poster.astype(np.float32) * (1 - 0.3 * edge_alpha)
+        cartoon = np.uint8(np.clip(cartoon, 0, 255))
+
+        return edge_colored, cartoon
+
+   
+   
     def cartoonify_image_mixed(self, img, sigma_s=75, **kwargs):
         num_bilateral = 7  # Number of bilateral filtering steps
         img_color = img.copy()
@@ -670,12 +741,43 @@ class CartoonifyApp:
         clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
         cl = clahe.apply(l)
         lab = cv2.merge((cl, a, b))
-        enhanced = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+        enhanced = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR) 
 
         return cv2.cvtColor(cartoon_img, cv2.COLOR_BGR2GRAY), enhanced
+
     
-     
-                 
+    def cartoonify_image_mixed_2(self, img, sigma_s=75, line_width=1, k=6, **kwargs):
+        # Step 1: Deep bilateral smoothing
+        img_smooth = img.copy()
+        for _ in range(6):
+            img_smooth = cv2.bilateralFilter(img_smooth, d=9, sigmaColor=sigma_s, sigmaSpace=sigma_s)
+
+        # Step 2: Color quantization
+        data = np.float32(img_smooth).reshape((-1, 3))
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+        _, labels, centers = cv2.kmeans(data, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+        centers = np.uint8(centers)
+        quantized = centers[labels.flatten()].reshape(img.shape)
+
+        # Step 3: Gentle blur to soften boundaries
+        soft_blur = cv2.edgePreservingFilter(quantized, flags=1, sigma_s=60, sigma_r=0.4)
+
+        # Step 4: Clean detail outlines (less noisy)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        laplacian = cv2.Laplacian(gray, cv2.CV_8U, ksize=5)  # larger kernel smooths small junk
+        _, edge_clean = cv2.threshold(laplacian, 40, 255, cv2.THRESH_BINARY_INV)  # filter out low contrast noise
+
+        # Morphological open + dilate to get crisp, bold outlines
+        kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+        cleaned = cv2.morphologyEx(edge_clean, cv2.MORPH_OPEN, kernel)
+        cleaned = cv2.dilate(cleaned, kernel, iterations=1)
+
+        # Convert to 3-channel and blend gently
+        detail_mask = cv2.cvtColor(cleaned, cv2.COLOR_GRAY2BGR).astype(np.float32) / 255.0
+        detailed = soft_blur.astype(np.float32) * (1 - 0.25 * detail_mask)
+        detailed = np.uint8(np.clip(detailed, 0, 255))
+
+        return detail_mask * 255, detailed
 
     def detail_enhance(self, img, sigma_s=10, sigma_r=0.15):
         return cv2.detailEnhance(img, sigma_s=sigma_s, sigma_r=sigma_r)
@@ -827,7 +929,7 @@ class CartoonifyApp:
         img_tk = ImageTk.PhotoImage(image=img_pil)
         
         label.configure(image=img_tk, text="")
-        label.image = img_tk
+        label.image = img_tk 
     
     def cartoonify_image(self):
         if self.original_image is None:
