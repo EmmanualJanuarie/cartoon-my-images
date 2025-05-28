@@ -395,8 +395,6 @@ class CartoonifyApp:
         else:
             messagebox.showwarning("Warning", "Please select a valid action.")
 
-
-        
     def create_style_selection(self):
         # Title for style selection
         self.style_title_frame = ctk.CTkFrame(self.style_frame, fg_color="#16213e", height=40, corner_radius=15)
@@ -422,9 +420,28 @@ class CartoonifyApp:
         self.styles_container = ctk.CTkFrame(self.style_frame, fg_color="#0f3460", corner_radius=15)
         self.styles_container.pack(fill=ctk.BOTH, expand=True, padx=10, pady=(0, 10))
         
-        # Style options frame
-        self.styles_content = ctk.CTkFrame(self.styles_container, fg_color="#0f3460", corner_radius=0)
-        self.styles_content.pack(fill=ctk.BOTH, expand=True, padx=20, pady=10)
+        # Create a canvas for horizontal scrolling inside the container
+        self.styles_canvas = ctk.CTkCanvas(self.styles_container, height=180, bg="#0f3460", highlightthickness=0)
+        self.styles_canvas.pack(side=ctk.TOP, fill=ctk.BOTH, expand=True, padx=20, pady=10)
+        
+        # Create a horizontal scrollbar linked to the canvas
+        self.scrollbar = ctk.CTkScrollbar(self.styles_container, orientation="horizontal", command=self.styles_canvas.xview)
+        self.scrollbar.pack(side=ctk.BOTTOM, fill=ctk.X, padx=20)
+        
+        # Configure the canvas to respond to the scrollbar
+        self.styles_canvas.configure(xscrollcommand=self.scrollbar.set)
+        
+        # Create a frame inside the canvas to hold the style buttons container
+        self.style_buttons_container = ctk.CTkFrame(self.styles_canvas, fg_color="#0f3460", corner_radius=0)
+        
+        # Create a window in the canvas to hold the style_buttons_container frame
+        self.canvas_window = self.styles_canvas.create_window((0, 0), window=self.style_buttons_container, anchor="nw")
+        
+        # Update scrollregion when the frame size changes
+        def on_frame_configure(event):
+            self.styles_canvas.configure(scrollregion=self.styles_canvas.bbox("all"))
+        
+        self.style_buttons_container.bind("<Configure>", on_frame_configure)
         
         # Define styles with their parameters
         self.styles = {
@@ -456,33 +473,33 @@ class CartoonifyApp:
                 "effect_function": self.lomo,
                 "effect_strength": 70
             },
-            "Cartoon Style 1":{
+            "Cartoon Style 1": {
                 "effect_function": self.cartoonify_image_mixed,
                 "effect_strength": 74
             },
-            "Cartoon Style 2":{
+            "Cartoon Style 2": {
                 "effect_function": self.cartoonify_image_mixed_2,
                 "effect_strength": 74
             },
-            "Cartoon Style 3":{
+            "Cartoon Style 3": {
                 "effect_function": self.cartoonify_image_mixed_3,
                 "effect_strength": 74
             },
-            "Cartoon Style 4":{
+            "Cartoon Style 4": {
                 "effect_function": self.cartoonify_image_mixed_4,
+                "effect_strength": 60
+            },
+            "Cartoon Style 5": {
+                "effect_function": self.cartoonify_image_mixed_5,
                 "effect_strength": 60
             }
         }
 
-        
         # Create style option buttons with thumbnails
         self.style_frames = []
         self.style_buttons = {}
         self.style_thumb_labels = {}
 
-        self.style_buttons_container = ctk.CTkFrame(self.styles_content, fg_color="#0f3460", corner_radius=0)
-        self.style_buttons_container.pack(fill=ctk.X, padx=10, pady=5)
-        
         # Create style buttons with an image label for preview
         for i, style_name in enumerate(self.styles.keys()):
             style_frame = ctk.CTkFrame(self.style_buttons_container, fg_color="#0f3460", corner_radius=10, width=120, height=140)
@@ -524,6 +541,8 @@ class CartoonifyApp:
             width=200
         )
         self.generate_btn.pack(pady=(0, 10))
+
+
         
     def create_status_bar(self):
         # Status bar content
@@ -565,6 +584,7 @@ class CartoonifyApp:
         self.progress_bar.set(value)
         self.root.update()
         
+
     def open_image(self):
         file_path = filedialog.askopenfilename(
             title="Select Image",
@@ -572,43 +592,52 @@ class CartoonifyApp:
         )
         
         if file_path:
-            try:
-                self.update_status("Loading image...")
-                self.show_progress(0.2)
-                
-                self.current_file_path = file_path
-                self.original_image_path = file_path
-                self.original_image = cv2.imread(file_path)
-                if self.original_image is None:
-                    raise Exception("Unable to read the image file.")
-                
-                h, w = self.original_image.shape[:2]
-                file_size = os.path.getsize(file_path) / 1024
-                file_name = os.path.basename(file_path)
-                self.info_label.configure(text=f"{file_name} | {w}x{h} | {file_size:.1f} KB")
-                
-                self.show_progress(0.5)
-                self.display_image(self.original_image, self.original_label)
-                
-                self.cartoonify_btn.configure(state=ctk.NORMAL)
-                self.generate_btn.configure(state=ctk.NORMAL)
-                
-                self.cartoonified_image = None
-                self.cartoon_label.configure(image=None, text="Click 'Cartoonify' to process the image")
-                self.save_btn.configure(state=ctk.DISABLED)
-                
-                # Generate previews for each style and update the style cards
-                self.generate_all_style_previews()
-                
-                self.show_progress(1.0)
-                self.update_status("Image loaded successfully with style previews")
-                self.root.after(1000, lambda: self.show_progress(0))
-                
-            except Exception as e:
-                messagebox.showerror("Error", f"Error opening image: {str(e)}")
-                self.update_status("Error loading image")
-                self.show_progress(0)
-    
+            # Start a new thread to load the image
+            threading.Thread(target=self.load_image, args=(file_path,)).start()
+
+    def load_image(self, file_path):
+        try:
+            self.update_status("Loading image...")
+            self.show_progress(0.2)
+
+            self.current_file_path = file_path
+            self.original_image_path = file_path
+            self.original_image = cv2.imread(file_path)
+            if self.original_image is None:
+                raise Exception("Unable to read the image file.")
+
+            h, w = self.original_image.shape[:2]
+            file_size = os.path.getsize(file_path) / 1024
+            file_name = os.path.basename(file_path)
+
+            # Update UI on the main thread
+            self.root.after(0, lambda: self.update_ui_after_image_load(file_name, w, h, file_size))
+
+        except Exception as e:
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Error opening image: {str(e)}"))
+            self.root.after(0, lambda: self.update_status("Error loading image"))
+            self.root.after(0, lambda: self.show_progress(0))
+
+    def update_ui_after_image_load(self, file_name, width, height, file_size):
+        self.info_label.configure(text=f"{file_name} | {width}x{height} | {file_size:.1f} KB")
+        self.show_progress(0.5)
+        self.display_image(self.original_image, self.original_label)
+
+        self.cartoonify_btn.configure(state=ctk.NORMAL)
+        self.generate_btn.configure(state=ctk.NORMAL)
+
+        self.cartoonified_image = None
+        self.cartoon_label.configure(image=None, text="Click 'Cartoonify' to process the image")
+        self.save_btn.configure(state=ctk.DISABLED)
+
+        # Generate previews for each style and update the style cards
+        self.generate_all_style_previews()
+
+        self.show_progress(1.0)
+        self.update_status("Image loaded successfully with style previews")
+        self.root.after(1000, lambda: self.show_progress(0))
+
+            
     def generate_all_style_previews(self):
         if self.original_image is None:
             return
@@ -631,7 +660,7 @@ class CartoonifyApp:
                 if thumb_label:
                     thumb_label.configure(image=img_tk, text="")
                     thumb_label.image = img_tk
-                    
+                            
     def pencil_sketch(self, img, sigma_s=60, sigma_r=0.07, shade_factor=0.05):
         gray, color = cv2.pencilSketch(img, sigma_s=sigma_s, sigma_r=sigma_r, shade_factor=shade_factor)
         return gray, color
@@ -698,6 +727,40 @@ class CartoonifyApp:
         cartoon = np.uint8(np.clip(cartoon, 0, 255))
 
         return edge_colored, cartoon
+    
+    def cartoonify_image_mixed_5(self, img, k=5, sigma_s=150, **kwargs):
+        # Step 1: Apply stronger bilateral filtering for smoother smoothing
+        img_smooth = img.copy()
+        for _ in range(7):  # Increased iterations for more smoothing
+            img_smooth = cv2.bilateralFilter(img_smooth, d=15, sigmaColor=sigma_s, sigmaSpace=sigma_s)
+
+        # Step 2: KMeans color quantization
+        data = np.float32(img_smooth).reshape((-1, 3))
+        _, labels, centers = cv2.kmeans(data, k, None,
+                                        (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.01),
+                                        10, cv2.KMEANS_RANDOM_CENTERS)
+        quantized = centers[labels.flatten()].reshape(img.shape)
+
+        # Step 3: Enhance colors for vibrancy with stronger smoothing
+        enhanced_colors = cv2.convertScaleAbs(quantized, alpha=1.2, beta=25)
+        enhanced_colors = cv2.medianBlur(enhanced_colors, 7)  # Larger kernel for smoother regions
+
+        # Step 4: Adaptive thresholding for edge detection with smoothing edges
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        edges = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                                    cv2.THRESH_BINARY, blockSize=9, C=2)
+        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+        edges = cv2.dilate(edges, np.ones((3, 3), np.uint8))
+        edges = cv2.GaussianBlur(edges, (7, 7), 0)  # Blur edges for smoothness
+
+        # Step 5: Blend edges with enhanced colors with softer edges effect
+        edge_colored = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+        edge_alpha = edge_colored.astype(np.float32) / 255.0
+        cartoon = enhanced_colors.astype(np.float32) * (1 - 0.35 * edge_alpha)
+        cartoon = np.uint8(np.clip(cartoon, 0, 255))
+
+        return edge_colored, cartoon
+
 
    
    
@@ -937,18 +1000,19 @@ class CartoonifyApp:
         if self.original_image is None:
             messagebox.showwarning("Warning", "Please open an image first.")
             return
-        
+
         if self.processing:
             return
-                
+
         self.processing = True
+        self.cartoonify_btn.configure(state=ctk.DISABLED)  # Disable the button at the start
         try:
             self.update_status(f"Processing image with {self.selected_style}...")
             self.show_progress(0.1)
-            
+
             # Fetch the effect function for the selected style
             effect_function = self.styles[self.selected_style]["effect_function"]
-            
+
             # Prepare parameters from sliders
             params = {}
             if self.selected_style == "Pencil Sketch":
@@ -967,40 +1031,40 @@ class CartoonifyApp:
                     "d": int(self.param_sliders["Bilateral Filter d"].get())
                 }
             # Add similar parameter handling for other styles as needed
-            
+
             # Apply the effect function on the original image
             result = effect_function(self.original_image, **params)
-            
+
             # Handle tuple output (e.g. pencil_sketch)
             if isinstance(result, tuple):
                 cartoon = result[1]
             else:
                 cartoon = result
-            
+
             # Store the cartoonified image
             self.cartoonified_image = cartoon
-            
+
             # Display the cartoonified image
             self.display_image(cartoon, self.cartoon_label)
-            
+
             # Enable the save button
             self.save_btn.configure(state=ctk.NORMAL)
-            
+
             self.show_progress(1.0)
             self.update_status(f"Image cartoonified with {self.selected_style} style")
-            
+
             # Reset progress bar after a delay
             self.root.after(1000, lambda: self.show_progress(0))
-            
+
         except Exception as e:
             messagebox.showerror("Error", f"Error during cartoonification: {str(e)}")
             self.update_status("Error processing image")
             self.show_progress(0)
         finally:
             self.processing = False
+            self.cartoonify_btn.configure(state=ctk.NORMAL)  # Re-enable the button after processing
 
 
-    
     def save_image(self):
         if self.cartoonified_image is None:
             messagebox.showwarning("Warning", "No cartoonified image to save.")

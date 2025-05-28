@@ -150,16 +150,22 @@ class VideoToCartoonApp(ctk.CTkToplevel):
             return
 
         file_path = filedialog.asksaveasfilename(defaultextension=".gif",
-                                                 filetypes=[("GIF files", "*.gif")])
+                                                filetypes=[("GIF files", "*.gif")])
         if not file_path:
             return
 
         try:
             pil_frames = [Image.fromarray(frame) for frame in self.frames]
-            pil_frames[0].save(file_path, save_all=True, append_images=pil_frames[1:], duration=50, loop=0)
+            
+            # Calculate duration per frame to make the GIF last 6 seconds
+            total_duration = 6000  # 6 seconds in milliseconds
+            duration_per_frame = total_duration // len(pil_frames) if pil_frames else 100  # Default to 100ms if no frames
+
+            pil_frames[0].save(file_path, save_all=True, append_images=pil_frames[1:], duration=duration_per_frame, loop=0)
             messagebox.showinfo("Saved", f"GIF saved to:\n{file_path}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save GIF:\n{e}")
+
 
     def apply_style(self, img, style):
         if style == "Sketch":
