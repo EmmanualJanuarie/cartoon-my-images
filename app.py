@@ -235,7 +235,7 @@ class CartoonifyApp:
         self.action_menu = ctk.CTkOptionMenu(
             self.sidebar_frame,
             variable=self.action_var,  # Use 'variable=' explicitly for clarity
-            values=["🎤 Voice Gen", "📸 Camera to Cartoon", "🎥 Video to Cartoon"],
+            values=["📸 Camera to Cartoon", "🎥 Video to Cartoon"],
             command=self.action_selected
         )
         self.action_menu.pack(padx=20, pady=(20, 10), fill=ctk.X)
@@ -388,9 +388,7 @@ class CartoonifyApp:
     # Method to execute the selected action
     def execute_action(self):
         selected_action = self.action_var.get()
-        if selected_action == "🎤 Voice Gen":
-            self.voice_gen()
-        elif selected_action == "📸 Camera to Cartoon":
+        if selected_action == "📸 Camera to Cartoon":
             self.camera_to_cartoon()
         elif selected_action == "🎥 Video to Cartoon":
             self.video_to_cartoon()
@@ -431,7 +429,7 @@ class CartoonifyApp:
         # Define styles with their parameters
         self.styles = {
             "Pencil Sketch": {
-                "effect_function": self.cartoonify_image_mixed_4,
+                "effect_function": self.pencil_sketch,
                 "effect_strength": 75
             },
             "Detail Enhance": {
@@ -469,6 +467,10 @@ class CartoonifyApp:
             "Cartoon Style 3":{
                 "effect_function": self.cartoonify_image_mixed_3,
                 "effect_strength": 74
+            },
+            "Cartoon Style 4":{
+                "effect_function": self.cartoonify_image_mixed_4,
+                "effect_strength": 60
             }
         }
 
