@@ -429,7 +429,7 @@ class CartoonifyApp:
         # Define styles with their parameters
         self.styles = {
             "Pencil Sketch": {
-                "effect_function": self.cartoonify_image_mixed,
+                "effect_function": self.cartoonify_image_mixed_2,
                 "effect_strength": 75
             },
             "Detail Enhance": {
@@ -458,6 +458,10 @@ class CartoonifyApp:
             },
             "Cartoon Style 1":{
                 "effect_function": self.cartoonify_image_mixed,
+                "effect_strength": 74
+            },
+            "Cartoon Style 2":{
+                "effect_function": self.cartoonify_image_mixed_2,
                 "effect_strength": 74
             }
         }
@@ -622,6 +626,7 @@ class CartoonifyApp:
     def pencil_sketch(self, img, sigma_s=60, sigma_r=0.07, shade_factor=0.05):
         gray, color = cv2.pencilSketch(img, sigma_s=sigma_s, sigma_r=sigma_r, shade_factor=shade_factor)
         return gray, color
+
     
     def cartoonify_image_mixed(self, img, sigma_s=75, **kwargs):
         num_bilateral = 7  # Number of bilateral filtering steps
@@ -668,9 +673,9 @@ class CartoonifyApp:
         enhanced = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
         return cv2.cvtColor(cartoon_img, cv2.COLOR_BGR2GRAY), enhanced
-
-
-
+    
+     
+                 
 
     def detail_enhance(self, img, sigma_s=10, sigma_r=0.15):
         return cv2.detailEnhance(img, sigma_s=sigma_s, sigma_r=sigma_r)
